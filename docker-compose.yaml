@@ -1,0 +1,64 @@
+version: '3'
+services:
+  elasticsearch:
+    image: elasticsearch:7.17.8
+    container_name: es01
+    ports:
+      - "9200:9200"
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - bootstrap.memory_lock=false
+      - cluster.initial_master_nodes=es01
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+  kibana:
+    image: kibana:7.17.8
+    container_name: kib01
+    links:
+      - "elasticsearch"
+    ports:
+      - 5601:5601
+    environment:
+      ELASTICSEARCH_URL: http://es01:9200
+      ELASTICSEARCH_HOSTS: http://es01:9200
+  docker_metric:
+    image: docker.elastic.co/beats/metricbeat:7.17.8
+    container_name: docker_metric
+    user: root
+    links:
+      - "elasticsearch"
+    depends_on:
+      - "elasticsearch"
+    command:
+      - metricbeat
+      - -e
+      - -E
+      - output.elasticsearch.hosts=["es01:9200"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+  fluentd:
+    container_name: fluentd
+    build: ./fluentd
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - ./fluentd/conf:/fluentd/etc
+    links:
+      - "elasticsearch"
+    ports:
+      - 24224:24224
+      - 24224:24224/udp
+  web:
+    image: httpd
+    ports:
+      - "80:80"
+    links:
+      - fluentd
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: httpd.access
+  
+    
